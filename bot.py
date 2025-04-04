@@ -2,19 +2,20 @@ import telebot
 import json
 import os
 
-BOT_TOKEN = '7798896914:AAFgwT4vdRfnWXLE-_e-mHDG4t_SJbZX3-o'  # Replace with your bot token
+# Bot Token
+BOT_TOKEN = "7798896914:AAFgwT4vdRfnWXLE-_e-mHDG4t_SJbZX3-o"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# List of authorized user IDs (replace with your real ones)
+# Authorized Users (Your 4 Telegram IDs)
 AUTHORIZED_USERS = [5018478747, 2005048275, 7750385522, 7912929481]
 
-# JSON file to store user-channel mapping
-CHANNEL_FILE = 'channels.json'
+# File to store channel list
+CHANNEL_FILE = "channels.json"
 
 def load_channels():
     if not os.path.exists(CHANNEL_FILE):
         with open(CHANNEL_FILE, 'w') as f:
-            json.dump({}, f)
+            json.dump([], f)
     with open(CHANNEL_FILE, 'r') as f:
         return json.load(f)
 
@@ -23,80 +24,68 @@ def save_channels(data):
         json.dump(data, f, indent=4)
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "👋 Welcome to the Broadcast Bot!\n\nUse /addchannel, /removechannel, /showchannels to manage your channels.")
+def start_message(message):
+    bot.reply_to(message, "👋 Welcome! Send any message, and I'll post it to all added channels!")
 
 @bot.message_handler(commands=['addchannel'])
 def add_channel(message):
     if message.from_user.id not in AUTHORIZED_USERS:
-        return
-
-    try:
-        _, channel = message.text.strip().split()
-    except:
-        bot.reply_to(message, "❌ Usage: /addchannel @channel_username or -100xxxx")
-        return
-
-    data = load_channels()
-    user_id = str(message.from_user.id)
-    data.setdefault(user_id, [])
-    if channel not in data[user_id]:
-        data[user_id].append(channel)
-        save_channels(data)
-        bot.reply_to(message, f"✅ Channel `{channel}` added successfully!", parse_mode="Markdown")
+        return bot.reply_to(message, "🚫 You are not authorized!")
+    
+    parts = message.text.split()
+    if len(parts) < 2:
+        return bot.reply_to(message, "⚠️ Usage: /addchannel @channelusername")
+    
+    channel = parts[1]
+    channels = load_channels()
+    if channel not in channels:
+        channels.append(channel)
+        save_channels(channels)
+        bot.reply_to(message, f"✅ Channel {channel} added!")
     else:
-        bot.reply_to(message, "⚠️ Channel already exists!")
+        bot.reply_to(message, "⚠️ This channel is already added!")
 
 @bot.message_handler(commands=['removechannel'])
 def remove_channel(message):
     if message.from_user.id not in AUTHORIZED_USERS:
-        return
-
-    try:
-        _, channel = message.text.strip().split()
-    except:
-        bot.reply_to(message, "❌ Usage: /removechannel @channel_username or -100xxxx")
-        return
-
-    data = load_channels()
-    user_id = str(message.from_user.id)
-    if user_id in data and channel in data[user_id]:
-        data[user_id].remove(channel)
-        save_channels(data)
-        bot.reply_to(message, f"✅ Channel `{channel}` removed!", parse_mode="Markdown")
+        return bot.reply_to(message, "🚫 You are not authorized!")
+    
+    parts = message.text.split()
+    if len(parts) < 2:
+        return bot.reply_to(message, "⚠️ Usage: /removechannel @channelusername")
+    
+    channel = parts[1]
+    channels = load_channels()
+    if channel in channels:
+        channels.remove(channel)
+        save_channels(channels)
+        bot.reply_to(message, f"✅ Channel {channel} removed!")
     else:
-        bot.reply_to(message, "⚠️ Channel not found!")
+        bot.reply_to(message, "⚠️ This channel is not in the list!")
 
 @bot.message_handler(commands=['showchannels'])
 def show_channels(message):
     if message.from_user.id not in AUTHORIZED_USERS:
-        return
-
-    data = load_channels()
-    user_id = str(message.from_user.id)
-    channels = data.get(user_id, [])
-    if channels:
-        channel_list = '\n'.join(channels)
-        bot.reply_to(message, f"📢 Your linked channels:\n\n{channel_list}")
-    else:
-        bot.reply_to(message, "❌ No channels linked yet.")
-
-@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
-def broadcast(message):
-    if message.from_user.id not in AUTHORIZED_USERS:
-        bot.reply_to(message, "❌ You're not authorized to use this bot.")
-        return
-
-    data = load_channels()
-    user_id = str(message.from_user.id)
-    channels = data.get(user_id, [])
+        return bot.reply_to(message, "🚫 You are not authorized!")
+    
+    channels = load_channels()
     if not channels:
-        bot.reply_to(message, "⚠️ No channels linked. Use /addchannel to add one.")
-        return
+        bot.reply_to(message, "⚠️ No channels added yet!")
+    else:
+        bot.reply_to(message, "📢 Added Channels:\n" + "\n".join(channels))
 
-    success = 0
-    failed = 0
-
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document', 'audio', 'voice', 'animation', 'poll'])
+def broadcast_post(message):
+    if message.from_user.id not in AUTHORIZED_USERS:
+        return bot.reply_to(message, "🚫 You are not authorized!")
+    
+    channels = load_channels()
+    if not channels:
+        return bot.reply_to(message, "⚠️ No channels added yet!")
+    
+    sent_count = 0
+    failed_count = 0
+    
     for channel in channels:
         try:
             if message.content_type == 'text':
@@ -107,11 +96,20 @@ def broadcast(message):
                 bot.send_video(channel, message.video.file_id, caption=message.caption)
             elif message.content_type == 'document':
                 bot.send_document(channel, message.document.file_id, caption=message.caption)
-            success += 1
+            elif message.content_type == 'audio':
+                bot.send_audio(channel, message.audio.file_id, caption=message.caption)
+            elif message.content_type == 'voice':
+                bot.send_voice(channel, message.voice.file_id)
+            elif message.content_type == 'animation':
+                bot.send_animation(channel, message.animation.file_id, caption=message.caption)
+            elif message.content_type == 'poll':
+                bot.send_poll(channel, message.poll.question, options=[o.text for o in message.poll.options])
+            
+            sent_count += 1
         except Exception as e:
-            failed += 1
-            print(f"❌ Failed to send to {channel}: {e}")
+            failed_count += 1
+            print(f"Failed to send to {channel}: {e}")
+    
+    bot.reply_to(message, f"✅ Sent to {sent_count} channels\n❌ Failed: {failed_count}")
 
-    bot.reply_to(message, f"✅ Sent to {success} channel(s)\n❌ Failed: {failed}")
-
-bot.infinity_polling()
+bot.polling(none_stop=True)
