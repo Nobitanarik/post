@@ -15,9 +15,18 @@ CHANNEL_FILE = "channels.json"
 def load_channels():
     if not os.path.exists(CHANNEL_FILE):
         with open(CHANNEL_FILE, 'w') as f:
-            json.dump([], f)
+            json.dump([], f)  # Empty list save kar rahe hain
+
     with open(CHANNEL_FILE, 'r') as f:
-        return json.load(f)
+        try:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data  # Agar list hai toh return kar do
+            else:
+                return []  # Agar list nahi hai toh empty list return kar do
+        except json.JSONDecodeError:
+            return []  # Agar file corrupt ho gayi hai toh empty list return karo
+
 
 def save_channels(data):
     with open(CHANNEL_FILE, 'w') as f:
@@ -31,19 +40,25 @@ def start_message(message):
 def add_channel(message):
     if message.from_user.id not in AUTHORIZED_USERS:
         return bot.reply_to(message, "🚫 You are not authorized!")
-    
+
     parts = message.text.split()
     if len(parts) < 2:
         return bot.reply_to(message, "⚠️ Usage: /addchannel @channelusername")
-    
+
     channel = parts[1]
     channels = load_channels()
+
+    # Ensure karo ki `channels` list hi hai
+    if not isinstance(channels, list):
+        channels = []  # Agar nahi hai toh empty list bana do
+
     if channel not in channels:
         channels.append(channel)
         save_channels(channels)
         bot.reply_to(message, f"✅ Channel {channel} added!")
     else:
         bot.reply_to(message, "⚠️ This channel is already added!")
+
 
 @bot.message_handler(commands=['removechannel'])
 def remove_channel(message):
